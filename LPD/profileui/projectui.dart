@@ -1,6 +1,7 @@
-import...
-
-
+import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:line_awesome_flutter/line_awesome_flutter.dart';
+import 'package:line_awesome_flutter/line_awesome_flutter.dart';
 
 
 class ProfileScreen extends StatelessWidget {
@@ -58,6 +59,12 @@ Widget build(BuildContext context) {
               const SizedBox(height: 10),
 
               ///Menu
+              ProfileMenuWidget()
+              ProfileMenuWidget()
+              ProfileMenuWidget()
+              ProfileMenuWidget()
+              ProfileMenuWidget()
+            
               ListTitle(
                 leading: Container(
                   width: 40,
