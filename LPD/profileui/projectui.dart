@@ -55,6 +55,29 @@ Widget build(BuildContext context) {
              ), //sizedbox
               const SizedBox(height: 30),
               const Divider(),
+              const SizedBox(height: 10),
+
+              ///Menu
+              ListTitle(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: Boxdecoration(
+                    borderRadius: BorderRadius.cicular(100),
+                    color: tAccentColor .withOpacity(0.1),
+                    ), //BoxDecoration
+                    child: const Icon(LineAwesomeIcons.cog, color: tAccentColor),
+                ), //Container
+                title: Text(tMenu1, style: Theme.of(context).textTheme.bodyText1),
+                trailing: leading: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: Boxdecoration(
+                    borderRadius: BorderRadius.cicular(100),
+                    color: tAccentColor .withOpacity(0.1),
+                    ), //BoxDecoration
+                    child: const Icon(LineAwesomeIcons.angel_right, size: 18.0, color: Colors.grey)), 
+              ), //ListTitle
           ],
         ), //column
       ), //Container
