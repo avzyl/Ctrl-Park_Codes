@@ -1,0 +1,60 @@
+Ctrl+Park License Plate Detection Setup Guide
+=============================================
+
+1. Install Python
+-----------------
+Make sure Python 3.8 or higher is installed on your device.
+You can download it from: https://www.python.org/downloads/
+
+2. Install Dependencies
+-----------------------
+Open a terminal in this folder and run:
+
+    pip install -r requirements.txt
+
+3. Add YOLO Model
+-----------------
+Place your trained YOLO model file at:
+
+    runs/detect/train2/weights/best.pt
+
+If you want to use a different path, update the script accordingly.
+
+4. Run the App
+--------------
+Start the application by running:
+
+    python your_script_name.py
+
+Replace `your_script_name.py` with the actual filename.
+
+5. Access the Web Interface
+---------------------------
+Open a browser and go to:
+
+    http://localhost:5000/
+
+If you're on another device in the same network, use the host machine's IP:
+
+    http://<your-local-ip>:5000/
+
+6. Optional: Preload Authorized Plates
+--------------------------------------
+To authorize specific plate numbers, open `plates.db` using a SQLite browser
+and insert them into the `authorized_plates` table.
+
+7. Troubleshooting
+------------------
+- If the webcam isn't working, make sure it's connected and not used by another app.
+- If you see errors about missing packages, double-check your Python version and re-run step 2.
+- For GPU acceleration, ensure your device has CUDA installed and compatible drivers.
+
+Enjoy your smart parking system!
+
+
+/////
+Virtual Environment
+1. python -m venv venv
+2. venv\Scripts\activate
+3. pip install -r requirements.txt
+
