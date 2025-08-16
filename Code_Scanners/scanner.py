@@ -9,7 +9,7 @@ cap.set(3, 640)
 cap.set(4, 480)
 
 # Load authorized codes
-with open('QR Scanner\myDataFile.txt') as f:
+with open('myDataFile.txt') as f:
     myDataList = f.read().splitlines()
 
 prevVisibleCodes = set()  # Barcodes detected in previous frame
