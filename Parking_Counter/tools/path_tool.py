@@ -31,19 +31,31 @@ def mouse_callback(event, x, y, flags, param):
 
 def main():
     global nodes, edges
-    img = cv2.imread("C:/Users/lyzza/UR_SY2526/ANPR1/parking_slant.jpg")
-    clone = img.copy()
+
+    # RTSP stream source
+    cap = cv2.VideoCapture("rtsp://ctrlpark_admin:mingae123@192.168.100.168:554/stream1")
+    if not cap.isOpened():
+        print("Error opening RTSP stream.")
+        return
 
     cv2.namedWindow("Path Editor")
     cv2.setMouseCallback("Path Editor", mouse_callback)
 
     while True:
-        display = clone.copy()
+        ret, frame = cap.read()
+        if not ret:
+            print("Failed to grab frame")
+            break
+
+        # Resize frame if needed (optional)
+        frame = cv2.resize(frame, (960, 540))
+
+        display = frame.copy()
 
         # Draw nodes
         for name, (x, y) in nodes.items():
             cv2.circle(display, (x, y), 5, (0, 255, 0), -1)
-            cv2.putText(display, name, (x+10, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1)
+            cv2.putText(display, name, (x + 10, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
         # Draw edges
         for src, dests in edges.items():
@@ -60,6 +72,7 @@ def main():
         elif key == ord('q'):  # Quit
             break
 
+    cap.release()
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
