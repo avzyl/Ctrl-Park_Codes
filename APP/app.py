@@ -15,8 +15,9 @@ FRAME_WIDTH = 980
 FRAME_HEIGHT = 540
 
 # Define parking slots (as polygons)
-slot_1 = np.array([[301, 319], [656, 501], [769, 348], [457, 215]], np.int32).reshape((-1, 1, 2))
-slot_2 = np.array([[102, 439], [182, 537], [591, 503], [296, 333]], np.int32).reshape((-1, 1, 2))
+slot_1 = np.array([[286, 320], [665, 499], [781, 340], [454, 219]], np.int32).reshape((-1, 1, 2))
+slot_2 = np.array([[91, 434], [283, 324], [661, 508], [183, 534]], np.int32).reshape((-1, 1, 2))
+
 slots = [slot_1, slot_2]
 
 def get_slot_center(slot):
