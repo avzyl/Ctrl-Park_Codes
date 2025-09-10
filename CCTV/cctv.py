@@ -19,10 +19,10 @@ HTML_TEMPLATE = """
 <html>
 <head>
     <title>RTSP Stream</title>
-    <style>
-        body { background: #111; text-align: center; color: white; font-family: sans-serif; }
+    <style>serif; }
         h1 { margin-top: 40px; }
         img { margin-top: 20px; border: 4px solid #fff; }
+        body { background: #111; text-align: center; color: white; font-family: sans-
     </style>
 </head>
 <body>
