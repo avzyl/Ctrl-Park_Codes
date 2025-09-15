@@ -1,0 +1,22 @@
+# YOLOv8 / Ultraytics
+ultralytics>=8.0.0
+
+# OpenCV for webcam and image processing
+opencv-python>=4.7.0.72
+
+# Numerical computations
+numpy>=1.25.0
+
+# OCR for license plates
+easyocr>=1.6
+
+# PyTorch backend for YOLO and EasyOCR
+torch>=2.2.0
+torchvision>=0.16.0
+torchaudio>=2.2.0
+
+# Web server
+Flask>=2.3.3
+
+# Firebase Admin SDK
+firebase-admin>=7.0.0
