@@ -217,7 +217,9 @@ def index():
             <div>
                 <h2>Live Camera (Zoom & Pan)</h2>
                 <div id="videoContainer" style="width:640px; height:360px; overflow:hidden; border:1px solid black; position:relative; cursor:grab;">
-                    <img id="videoFeed" src="{{ url_for('video_feed') }}" style="transform-origin: center center; position:absolute; left:0; top:0;">
+                    <img id="videoFeed" src="{{ url_for('video_feed') }}" 
+                         style="width:100%; height:100%; object-fit:contain; 
+                                transform-origin:center center; position:absolute; left:0; top:0;">
                 </div>
             </div>
 
@@ -235,6 +237,23 @@ def index():
 
         let vScale = 1.0, vOffsetX = 0, vOffsetY = 0;
         let vDragging = false, vLastX = 0, vLastY = 0;
+
+        function updateVideoTransform() {
+            video.style.transform = `translate(${vOffsetX}px, ${vOffsetY}px) scale(${vScale})`;
+        }
+
+        function resetVideoView() {
+            vScale = 1.0;
+            vOffsetX = 0;
+            vOffsetY = 0;
+            updateVideoTransform();
+        }
+
+        // Reset when page loads
+        window.onload = resetVideoView;
+
+        // Reset when container resizes
+        new ResizeObserver(() => resetVideoView()).observe(videoContainer);
 
         videoContainer.addEventListener("mousedown", e => {
             vDragging = true;
@@ -267,10 +286,6 @@ def index():
             else vScale /= zoomFactor;
             updateVideoTransform();
         });
-
-        function updateVideoTransform() {
-            video.style.transform = `translate(${vOffsetX}px, ${vOffsetY}px) scale(${vScale})`;
-        }
 
         // ---------- MAP (Pan, Zoom, Rotate w/ Shift) ----------
         let canvas = document.getElementById("mapCanvas");
@@ -360,8 +375,6 @@ def index():
         </script>
     </body>
     </html>
-
-
     ''')
 
 if __name__ == '__main__':
