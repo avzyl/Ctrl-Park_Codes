@@ -1,0 +1,286 @@
+# save as app_hls.py
+from flask import Flask, Response, jsonify, send_from_directory
+from flask_cors import CORS
+import cv2
+import numpy as np
+from ultralytics import YOLO
+import heapq
+import math
+import threading
+import subprocess
+import os
+import time
+
+app = Flask(__name__)
+CORS(app)
+
+# ---------------- Config ---------------- #
+VIDEO_PATH = "record_clear.mp4"
+FRAME_WIDTH = 980
+FRAME_HEIGHT = 540
+FPS = 30
+
+HLS_DIR = "hls"
+HLS_FILENAME = "stream.m3u8"
+HLS_PATH = os.path.join(HLS_DIR, HLS_FILENAME)
+os.makedirs(HLS_DIR, exist_ok=True)
+
+# ---------------- Load YOLO model ---------------- #
+model = YOLO("yolov8n.pt")
+
+# ---------------- Parking Slots (polygons) ---------------- #
+slot_34 = np.array([[916, 306], [936, 257], [869, 233], [838, 263]], np.int32).reshape((-1, 1, 2))
+slot_52 = np.array([[281, 74], [339, 71], [272, 69], [330, 68]], np.int32).reshape((-1, 1, 2))
+slots = [slot_34, slot_52]
+
+def get_slot_center(slot):
+    M = cv2.moments(slot)
+    if M["m00"] != 0:
+        return (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+    return None
+
+# ---------------- Graph Nodes & Edges ---------------- #
+nodes_base = {
+    "gate": (52, 66),
+    "node1": (91, 66),
+    "node2": (103, 78),
+    "node3": (126, 81),
+    "node4": (536, 497),
+    "node5": (962, 342),
+    "node6": (289, 79),
+}
+edges_base = {
+    "gate": ["node1"],
+    "node1": ["node2"],
+    "node2": ["node3"],
+    "node3": ["node4"],
+    "node4": ["node5"],
+    "node5": ["node6"],
+    "node6": [],
+}
+
+# ---------------- Graph Utilities ---------------- #
+def euclidean(p1, p2):
+    return float(np.linalg.norm(np.array(p1) - np.array(p2)))
+
+def shortest_path(start, goal, nodes, edges):
+    pq = [(0.0, start, [])]
+    seen = set()
+    while pq:
+        cost, u, path = heapq.heappop(pq)
+        if u in seen:
+            continue
+        seen.add(u)
+        path = path + [u]
+        if u == goal:
+            return path, cost
+        for v in edges.get(u, []):
+            heapq.heappush(pq, (cost + euclidean(nodes[u], nodes[v]), v, path))
+    return None, float("inf")
+
+def path_length(path, nodes):
+    if not path or len(path) < 2:
+        return float("inf")
+    return sum(euclidean(nodes[path[i]], nodes[path[i + 1]]) for i in range(len(path) - 1))
+
+def attach_slot_to_nearest_node(slot_center, sname, nodes, edges):
+    nearest = min(nodes.keys(), key=lambda n: euclidean(slot_center, nodes[n]))
+    nodes[sname] = slot_center
+    edges[sname] = []
+    edges[nearest].append(sname)
+
+# ---------------- Directions Utility ---------------- #
+def get_turn_directions(path, nodes):
+    directions = []
+    for i in range(1, len(path) - 1):
+        p0 = np.array(nodes[path[i-1]])
+        p1 = np.array(nodes[path[i]])
+        p2 = np.array(nodes[path[i+1]])
+
+        v1 = p1 - p0
+        v2 = p2 - p1
+
+        angle = math.degrees(math.atan2(v2[1], v2[0]) - math.atan2(v1[1], v1[0]))
+        angle = (angle + 360) % 360
+
+        if 45 < angle < 135:
+            directions.append("Turn Left")
+        elif 225 < angle < 315:
+            directions.append("Turn Right")
+        else:
+            directions.append("Go Straight")
+    return directions
+
+# ---------------- Globals ---------------- #
+latest_directions = []
+latest_path = []
+
+latest_jpeg = None
+jpeg_lock = threading.Lock()
+stop_event = threading.Event()
+
+# ---------------- FFmpeg Subprocess ---------------- #
+def start_ffmpeg_subprocess(width, height, fps, hls_out_path):
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-f", "rawvideo",
+        "-pix_fmt", "bgr24",
+        "-s", f"{width}x{height}",
+        "-r", str(fps),
+        "-i", "-",  # stdin
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-tune", "zerolatency",
+        "-threads", "1",
+        "-f", "hls",
+        "-hls_time", "2",
+        "-hls_list_size", "5",
+        "-hls_flags", "delete_segments",
+        hls_out_path
+    ]
+    return subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+# ---------------- Frame Producer ---------------- #
+def frame_producer():
+    global latest_jpeg, latest_directions, latest_path, cap
+
+    cap = cv2.VideoCapture(VIDEO_PATH)
+    cap.set(cv2.CAP_PROP_FPS, FPS)
+    ffmpeg_proc = start_ffmpeg_subprocess(FRAME_WIDTH, FRAME_HEIGHT, FPS, HLS_PATH)
+
+    try:
+        while not stop_event.is_set():
+            if not cap.isOpened():
+                cap.open(VIDEO_PATH)
+                time.sleep(0.2)
+                continue
+
+            ret, img = cap.read()
+            if not ret:
+                cap.release()
+                cap = cv2.VideoCapture(VIDEO_PATH)
+                time.sleep(0.1)
+                continue
+
+            img = cv2.resize(img, (FRAME_WIDTH, FRAME_HEIGHT))
+            results = model(img, verbose=False)
+            cars = []
+
+            for r in results:
+                for box in r.boxes:
+                    label = model.names[int(box.cls[0])]
+                    if label in ["car", "truck", "bus"]:
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        cx = (x1 + x2) // 2
+                        cy = y2 - 10
+                        cars.append((cx, cy))
+                        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                        cv2.circle(img, (cx, cy), 5, (0, 0, 255), -1)
+
+            overlay = img.copy()
+            available_slots = []
+            available_count = 0
+
+            for i, slot in enumerate(slots, start=1):
+                occupied = any(cv2.pointPolygonTest(slot, (cx, cy), False) >= 0 for (cx, cy) in cars)
+                color = (0, 255, 0) if not occupied else (0, 0, 255)
+                if not occupied:
+                    cX, cY = get_slot_center(slot)
+                    if cX is not None and cY is not None:
+                        available_slots.append(((cX, cY), i, slot))
+                        available_count += 1
+                cv2.polylines(overlay, [slot], True, color, 2)
+
+            img = cv2.addWeighted(overlay, 0.4, img, 0.6, 0)
+
+            if available_slots:
+                nodes = dict(nodes_base)
+                edges = {k: list(v) for k, v in edges_base.items()}
+
+                for (cxy, sid, _) in available_slots:
+                    sname = f"slot{sid}"
+                    attach_slot_to_nearest_node(cxy, sname, nodes, edges)
+
+                best = None
+                best_len = float("inf")
+                best_path = None
+                for (_, sid, _) in available_slots:
+                    sname = f"slot{sid}"
+                    path, _ = shortest_path("gate", sname, nodes, edges)
+                    L = path_length(path, nodes)
+                    if L < best_len:
+                        best_len, best, best_path = L, sid, path
+
+                if best_path:
+                    latest_path = best_path
+                    latest_directions = get_turn_directions(best_path, nodes)
+                    for i in range(len(best_path) - 1):
+                        p1, p2 = nodes[best_path[i]], nodes[best_path[i + 1]]
+                        cv2.line(img, p1, p2, (0, 255, 255), 3)
+
+            text = f"Available: {available_count}/{len(slots)}"
+            (text_w, text_h), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+            x = (img.shape[1] - text_w) // 2
+            cv2.putText(img, text, (x, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+
+            ret_enc, buffer = cv2.imencode('.jpg', img)
+            if ret_enc:
+                with jpeg_lock:
+                    latest_jpeg = buffer.tobytes()
+
+            try:
+                if ffmpeg_proc and ffmpeg_proc.stdin:
+                    ffmpeg_proc.stdin.write(img.tobytes())
+            except BrokenPipeError:
+                try:
+                    ffmpeg_proc.kill()
+                except Exception:
+                    pass
+                ffmpeg_proc = start_ffmpeg_subprocess(FRAME_WIDTH, FRAME_HEIGHT, FPS, HLS_PATH)
+
+            time.sleep(1.0 / FPS)
+    finally:
+        if ffmpeg_proc and ffmpeg_proc.stdin:
+            ffmpeg_proc.stdin.close()
+            ffmpeg_proc.terminate()
+        cap.release()
+
+# ---------------- Flask Routes ---------------- #
+def mjpeg_generator():
+    global latest_jpeg
+    while not stop_event.is_set():
+        with jpeg_lock:
+            frame = latest_jpeg
+        if frame is None:
+            time.sleep(0.05)
+            continue
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        time.sleep(0.01)
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(mjpeg_generator(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/hls/<path:filename>')
+def hls_files(filename):
+    return send_from_directory(HLS_DIR, filename)
+
+@app.route('/directions')
+def directions():
+    return jsonify({"directions": latest_directions, "path": latest_path})
+
+@app.route('/map')
+def get_map():
+    return jsonify({"nodes": nodes_base, "edges": edges_base})
+
+# ---------------- Main ---------------- #
+if __name__ == '__main__':
+    producer = threading.Thread(target=frame_producer, daemon=True)
+    producer.start()
+    try:
+        app.run(host='0.0.0.0', port=5000, debug=False)
+    finally:
+        stop_event.set()
+        producer.join(timeout=2)
