@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>CEU Malolos Parking Pathway Simulation — Auto Confirm</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+  <style>
+    #map { height: 100vh; margin:0; padding:0; }
+    #directions {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      padding: 12px;
+      font-size: 14px;
+      max-height: 200px;
+      overflow-y: auto;
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.3);
+      border-top: 2px solid #333;
+      display: none;
+      z-index: 1000;
+    }
+    #directions-header { display:flex; justify-content:space-between; align-items:center; font-weight:bold; margin-bottom:8px; }
+    #close-directions { cursor:pointer; background:#e74c3c; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:12px; }
+    #reopen-directions {
+      position: fixed; bottom: 220px; right: 20px; background:#3498db; color:white; border:none;
+      padding: 10px 14px; border-radius:50%; font-size:16px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.3);
+      display:none; z-index:1001;
+    }
+    .custom-icon div { border-radius:50%; border:2px solid black; width:14px; height:14px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div id="directions">
+    <div id="directions-header">
+      Routing Directions
+      <button id="close-directions">Close</button>
+    </div>
+    <div id="directions-content"></div>
+  </div>
+
+  <button id="reopen-directions">📄</button>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+  const CENTER = [14.8692841, 120.8012936];
+  const PROXIMITY_METERS = 1;
+  const AUTO_CONFIRM_TIME = 5000; // 5 seconds
+
+  const locations = {
+    "Gate": [14.869690, 120.801010],
+    "Node 1": [14.869722, 120.801090],
+    "Node 2": [14.869500, 120.801334],
+    "Node 3": [14.869252, 120.801567],
+    "Node 4": [14.869167, 120.801648],
+    "Node 5": [14.869206, 120.801705],
+    "Node 6": [14.869225, 120.801708],
+    "Node 7": [14.869309, 120.801519],
+    "Node 8": [14.869472, 120.801363],
+    "Parking 1": [14.869456, 120.801326],
+    "Parking 2": [14.869445, 120.801343],
+    "Parking 3": [14.869266, 120.801608],
+    "Parking 4": [14.869280, 120.801485]
+  };
+
+  const parkingStatus = {
+    "Parking 1": true,
+    "Parking 2": true,
+    "Parking 3": true,
+    "Parking 4": true
+  };
+
+  const routes = {
+    "Parking 1": [
+      {from: "Gate", to: "Node 1", instruction: "Turn Right"},
+      {from: "Node 1", to: "Node 2", instruction: "Go Straight"},
+      {from: "Node 2", to: "Parking 1", instruction: "Arrive at Parking 1"}
+    ],
+    "Parking 2": [
+      {from: "Gate", to: "Node 1", instruction: "Turn Right"},
+      {from: "Node 1", to: "Node 8", instruction: "Go Straight"},
+      {from: "Node 8", to: "Parking 2", instruction: "Arrive at Parking 2"}
+    ],
+    "Parking 3": [
+      {from: "Gate", to: "Node 1", instruction: "Turn Right"},
+      {from: "Node 1", to: "Node 2", instruction: "Go Straight"},
+      {from: "Node 2", to: "Node 3", instruction: "Turn Left"},
+      {from: "Node 3", to: "Parking 3", instruction: "Arrive at Parking 3"}
+    ],
+    "Parking 4": [
+      {from: "Gate", to: "Node 1", instruction: "Turn Right"},
+      {from: "Node 1", to: "Node 2", instruction: "Go Straight"},
+      {from: "Node 2", to: "Node 7", instruction: "Turn Right"},
+      {from: "Node 7", to: "Parking 4", instruction: "Arrive at Parking 4"}
+    ]
+  };
+
+  let map = L.map('map').setView(CENTER, 19);
+  let markers = {};
+  let activePolylines = [];
+  let carMarker = null;
+  let carLocation = null;
+  let autoConfirmTimer = null;
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 22,
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+
+  function makeIcon(color, size = 14) {
+    return L.divIcon({
+      className: 'custom-icon',
+      html: `<div style="background:${color};width:${size}px;height:${size}px;border-radius:50%;border:2px solid black"></div>`,
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+  }
+
+  Object.keys(locations).forEach(function(name) {
+    const coords = locations[name];
+    let color = 'blue';
+    if (name.startsWith('Parking')) color = parkingStatus[name] ? 'green' : 'red';
+    else if (name.startsWith('Node')) color = 'orange';
+    else if (name === 'Gate') color = '#444';
+
+    const marker = L.marker(coords, { icon: makeIcon(color) }).addTo(map);
+    if (name.startsWith('Parking')) {
+      marker.on('click', function(e) {
+        map.closePopup();
+        if (!parkingStatus[name]) {
+          marker.bindPopup(`<b>${name}</b><br>Status: ❌ Occupied`).openPopup();
+          return;
+        }
+        drawRoute(name);
+        if (!carLocation) {
+          marker.bindPopup(`<b>${name}</b><br>Status: ✅ Available<br><i>Set your car location by clicking the map</i>`).openPopup();
+          return;
+        }
+        const slotLatLng = L.latLng(locations[name]);
+        const dist = map.distance(carLocation, slotLatLng);
+        if (dist <= PROXIMITY_METERS) {
+          marker.bindPopup(
+            `<b>${name}</b><br>Status: ✅ Available<br>
+             <div style="margin-top:6px;font-size:12px">Distance: ${Math.round(dist)} m</div>
+             <div style="margin-top:6px"><button onclick="confirmParking('${name}')">Park Here</button></div>`
+          ).openPopup();
+
+          startAutoConfirm(name); // start 5s auto confirm timer
+        } else {
+          marker.bindPopup(
+            `<b>${name}</b><br>Status: ✅ Available<br>
+             <div style="margin-top:6px;font-size:12px">Distance: ${Math.round(dist)} m — move closer to enable parking</div>`
+          ).openPopup();
+        }
+      });
+    } else {
+      marker.bindPopup(name);
+    }
+    markers[name] = marker;
+  });
+
+  function startAutoConfirm(parkingName) {
+    clearTimeout(autoConfirmTimer);
+    autoConfirmTimer = setTimeout(() => {
+      const slotLatLng = L.latLng(locations[parkingName]);
+      const dist = map.distance(carLocation, slotLatLng);
+      if (dist <= PROXIMITY_METERS && parkingStatus[parkingName]) {
+        confirmParking(parkingName);
+      }
+    }, AUTO_CONFIRM_TIME);
+  }
+
+  function clearRoute() {
+    activePolylines.forEach(line => map.removeLayer(line));
+    activePolylines = [];
+    document.getElementById('directions').style.display = 'none';
+  }
+
+  function drawRoute(parkingName) {
+    clearRoute();
+    const steps = routes[parkingName];
+    const dirBox = document.getElementById('directions');
+    const dirContent = document.getElementById('directions-content');
+    dirBox.style.display = 'block';
+    dirContent.innerHTML = `<b>Route to ${parkingName}:</b><br>`;
+    steps.forEach(step => {
+      const from = locations[step.from];
+      const to = locations[step.to];
+      const line = L.polyline([from, to], { color: 'blue', weight: 5 }).addTo(map);
+      activePolylines.push(line);
+      dirContent.innerHTML += `➡️ ${step.instruction}<br>`;
+    });
+  }
+
+  document.getElementById('close-directions').addEventListener('click', function() {
+    document.getElementById('directions').style.display = 'none';
+    document.getElementById('reopen-directions').style.display = 'block';
+  });
+  document.getElementById('reopen-directions').addEventListener('click', function() {
+    document.getElementById('directions').style.display = 'block';
+    document.getElementById('reopen-directions').style.display = 'none';
+  });
+
+  function confirmParking(parkingName) {
+    if (!carLocation) {
+      alert('Place your car on the map first (click the map).');
+      return;
+    }
+    const slotLatLng = L.latLng(locations[parkingName]);
+    const dist = map.distance(carLocation, slotLatLng);
+    if (dist > PROXIMITY_METERS) {
+      alert(`You are too far (${Math.round(dist)} m). Move closer to ${parkingName} to park.`);
+      return;
+    }
+    parkingStatus[parkingName] = false;
+    markers[parkingName].setIcon(makeIcon('red'));
+    markers[parkingName].bindPopup(`<b>${parkingName}</b><br>Status: ❌ Occupied`).openPopup();
+    clearRoute();
+    suggestNearestAfterParking();
+    clearTimeout(autoConfirmTimer);
+  }
+  window.confirmParking = confirmParking;
+
+  map.on('click', function(e) {
+    if (carMarker) map.removeLayer(carMarker);
+    carLocation = e.latlng;
+    carMarker = L.marker(carLocation, { icon: makeIcon('#0074D9', 18) }).addTo(map).bindPopup('🚗 Your Location').openPopup();
+
+    clearTimeout(autoConfirmTimer);
+
+    let nearest = null;
+    let nearestD = Infinity;
+    for (const name in parkingStatus) {
+      if (!parkingStatus[name]) continue;
+      const d = map.distance(carLocation, L.latLng(locations[name]));
+      if (d < nearestD) { nearestD = d; nearest = name; }
+    }
+    if (nearest) {
+      drawRoute(nearest);
+      if (nearestD <= PROXIMITY_METERS) {
+        markers[nearest].fire('click');
+      }
+    }
+  });
+
+  function suggestNearestAfterParking() {
+    if (carLocation) {
+      let nearest = null; let nearestD = Infinity;
+      for (const name in parkingStatus) {
+        if (!parkingStatus[name]) continue;
+        const d = map.distance(carLocation, L.latLng(locations[name]));
+        if (d < nearestD) { nearestD = d; nearest = name; }
+      }
+      if (nearest) drawRoute(nearest);
+      else clearRoute();
+    } else {
+      let gate = L.latLng(locations['Gate']);
+      let nearest = null; let nearestD = Infinity;
+      for (const name in parkingStatus) {
+        if (!parkingStatus[name]) continue;
+        const d = map.distance(gate, L.latLng(locations[name]));
+        if (d < nearestD) { nearestD = d; nearest = name; }
+      }
+      if (nearest) drawRoute(nearest);
+      else clearRoute();
+    }
+  }
+
+  (function showNearestFromGate() {
+    let gate = L.latLng(locations['Gate']);
+    let nearest = null; let nearestD = Infinity;
+    for (const name in parkingStatus) {
+      if (!parkingStatus[name]) continue;
+      const d = map.distance(gate, L.latLng(locations[name]));
+      if (d < nearestD) { nearestD = d; nearest = name; }
+    }
+    if (nearest) drawRoute(nearest);
+  })();
+</script>
+</body>
+</html>
