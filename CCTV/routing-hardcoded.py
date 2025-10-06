@@ -22,6 +22,23 @@ FPS = 30
 model = YOLO("yolov8n.pt")
 
 # ---------------- Parking Slots ---------------- #
+slot_1 = np.array([[56, 76], [102, 69], [59, 76], [96, 72]], np.int32).reshape((-1, 1, 2))
+slot_2 = np.array([[51, 83], [105, 74], [53, 82], [102, 72]], np.int32).reshape((-1, 1, 2))
+slot_3 = np.array([[49, 93], [106, 84], [50, 90], [106, 79]], np.int32).reshape((-1, 1, 2))
+slot_4 = np.array([[44, 107], [108, 96], [44, 98], [106, 90]], np.int32).reshape((-1, 1, 2))
+slot_5 = np.array([[105, 108], [39, 123], [41, 113], [104, 104]], np.int32).reshape((-1, 1, 2))
+slot_6 = np.array([[109, 113], [40, 125], [42, 116], [111, 106]], np.int32).reshape((-1, 1, 2))
+slot_7 = np.array([[23, 136], [109, 118], [105, 113], [27, 128]], np.int32).reshape((-1, 1, 2))
+slot_8 = np.array([[17, 144], [108, 128], [108, 121], [22, 136]], np.int32).reshape((-1, 1, 2))
+slot_9 = np.array([[6, 159], [116, 136], [108, 128], [16, 146]], np.int32).reshape((-1, 1, 2))
+slot_10 = np.array([[3, 169], [116, 148], [114, 137], [7, 157]], np.int32).reshape((-1, 1, 2))
+slot_11 = np.array([[2, 189], [125, 162], [115, 149], [2, 168]], np.int32).reshape((-1, 1, 2))
+slot_12 = np.array([[5, 207], [131, 177], [124, 161], [3, 186]], np.int32).reshape((-1, 1, 2))
+slot_13 = np.array([[4, 231], [137, 202], [132, 178], [4, 207]], np.int32).reshape((-1, 1, 2))
+slot_14 = np.array([[3, 267], [143, 233], [136, 201], [5, 231]], np.int32).reshape((-1, 1, 2))
+slot_15 = np.array([[2, 319], [163, 273], [144, 231], [4, 266]], np.int32).reshape((-1, 1, 2))
+slot_16 = np.array([[7, 391], [187, 333], [164, 272], [0, 317]], np.int32).reshape((-1, 1, 2))
+slot_17 = np.array([[2, 513], [232, 430], [183, 332], [3, 390]], np.int32).reshape((-1, 1, 2))
 
 #parking2
 slot_18 =np.array([[585, 352], [844, 328], [750, 279], [484, 287]], np.int32).reshape((-1, 1, 2))
@@ -42,19 +59,60 @@ slot_32 = np.array([[181, 90], [268, 89], [261, 82], [176, 84]], np.int32).resha
 
 #parking 3
 slot_34 = np.array([[916, 306], [936, 257], [869, 233], [838, 263]], np.int32).reshape((-1, 1, 2))
-
-# Add slot_35 since it's in your hardcoded paths
 slot_35 = np.array([[837, 263], [868, 233], [804, 210], [758, 228]], np.int32).reshape((-1, 1, 2))
+slot_36 = np.array([[758, 228], [805, 211], [743, 186], [691, 203]], np.int32).reshape((-1, 1, 2))
+slot_37 = np.array([[690, 203], [741, 186], [699, 168], [633, 180]], np.int32).reshape((-1, 1, 2))
+slot_38 = np.array([[633, 180], [697, 172], [646, 152], [577, 164]], np.int32).reshape((-1, 1, 2))
+slot_39 = np.array([[577, 164], [646, 154], [597, 142], [522, 149]], np.int32).reshape((-1, 1, 2))
+slot_40 = np.array([[522, 149], [597, 147], [487, 134], [564, 127]], np.int32).reshape((-1, 1, 2))
+slot_41 = np.array([[488, 133], [564, 129], [458, 122], [526, 118]], np.int32).reshape((-1, 1, 2))
+slot_42 = np.array([[459, 120], [521, 117], [428, 116], [499, 109]], np.int32).reshape((-1, 1, 2))
+slot_43 = np.array([[429, 116], [499, 111], [477, 103], [406, 107]], np.int32).reshape((-1, 1, 2))
+slot_44 = np.array([[407, 105], [478, 104], [452, 96], [386, 101]], np.int32).reshape((-1, 1, 2))
+slot_45 = np.array([[387, 100], [451, 96], [432, 92], [364, 94]], np.int32).reshape((-1, 1, 2))
+slot_46 = np.array([[366, 96], [433, 90], [409, 85], [346, 89]], np.int32).reshape((-1, 1, 2))
+slot_47 = np.array([[346, 90], [408, 83], [392, 81], [327, 85]], np.int32).reshape((-1, 1, 2))
+slot_48 = np.array([[327, 86], [392, 81], [378, 79], [312, 81]], np.int32).reshape((-1, 1, 2))
+slot_49 = np.array([[314, 81], [376, 81], [361, 75], [303, 78]], np.int32).reshape((-1, 1, 2))
+slot_50 = np.array([[304, 79], [359, 76], [347, 71], [294, 77]], np.int32).reshape((-1, 1, 2))
+slot_51 = np.array([[294, 77], [347, 71], [338, 71], [280, 74]], np.int32).reshape((-1, 1, 2))
+slot_52 = np.array([[281, 74], [339, 71], [272, 69], [330, 68]], np.int32).reshape((-1, 1, 2))
 
-# Create a mapping from actual slot numbers to their positions in the list
+slots = [
+    slot_1, slot_2, slot_3, slot_4, slot_5, slot_6,
+    slot_7, slot_8, slot_9, slot_10, slot_11,
+    slot_12, slot_13, slot_14, slot_15, slot_16, slot_17,
+
+    #parking 2
+    slot_18, slot_19, slot_20, slot_21, slot_22, slot_23, 
+    slot_24, slot_25, slot_26, slot_27, slot_28, slot_29, 
+    slot_30, slot_31, slot_32,
+
+    #parking 3
+    slot_34, slot_35, slot_36, slot_37, slot_38,
+    slot_39, slot_40, slot_41, slot_42, slot_43, slot_44,
+    slot_45, slot_46, slot_47, slot_48, slot_49, slot_50,
+    slot_51, slot_52
+]
+
+# ---------------- Slot Mapping ---------------- #
 slot_mapping = {
+    1: slot_1, 2: slot_2, 3: slot_3, 4: slot_4, 5: slot_5, 6: slot_6, 7: slot_7,
+    8: slot_8, 9: slot_9, 10: slot_10, 11: slot_11, 12: slot_12, 13: slot_13,
+    14: slot_14, 15: slot_15, 16: slot_16, 17: slot_17,
     18: slot_18, 19: slot_19, 20: slot_20, 21: slot_21, 22: slot_22, 23: slot_23,
     24: slot_24, 25: slot_25, 26: slot_26, 27: slot_27, 28: slot_28, 29: slot_29,
-    30: slot_30, 31: slot_31, 32: slot_32, 34: slot_34, 35: slot_35
+    30: slot_30, 31: slot_31, 32: slot_32, 34: slot_34, 35: slot_35, 36: slot_36, 
+    37: slot_37, 38: slot_38, 39: slot_39, 40: slot_40,
+    41: slot_41, 42: slot_42, 43: slot_43, 44: slot_44, 45: slot_45,
+    46: slot_46, 47: slot_47, 48: slot_48, 49: slot_49, 50: slot_50,
+    51: slot_51, 52: slot_52
 }
 
-# Create slots list in order
-slots = [slot_mapping[sid] for sid in [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34, 35]]
+# ---------------- Slot List ---------------- #
+slots = [slot_mapping[sid] for sid in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 
+            18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+            34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52]]
 
 def get_slot_center(slot):
     M = cv2.moments(slot)
@@ -153,11 +211,19 @@ hardcoded_paths = {
     "slot_32": ["gate", "node1", "node2", "slot_32"],
     "slot_34": ["gate", "node1", "node2", "node3", "node4", "node5", "node6", "node7", "node8", "node9", "slot_34"],
     "slot_35": ["gate", "node1", "node2", "node3", "node4", "node5", "node6", "node7", "node8", "node9", "slot_35"],
+
+    # parking 3
+    "slot_52": ["gate", "node1", "node2", "node3", "node4", "node5", "node6", "node7", "node8", "node9", "node10","node11", "node12", "node13", "node14", "node15", "node16", "node17", "node18", "slot_52"],
 }
 
 # ---------------- Slot Priority ---------------- #
 # Define the priority order: farthest from gate first
-slot_priority = [35, 34, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18]
+slot_priority = [
+    52, 51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36,
+    35, 34, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19,
+    18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
+]
+
 
 # ---------------- Globals ---------------- #
 latest_directions = []
@@ -197,8 +263,12 @@ def frame_producer():
         available_slots = []
         available_count = 0
 
-        # Iterate through actual slot numbers (18-32, 34, 35)
-        for slot_number in [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34, 35]:
+        # Iterate through actual slot numbers
+        for slot_number in [
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+            21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 38,
+            39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52
+        ]:
             slot = slot_mapping[slot_number]
             occupied = any(cv2.pointPolygonTest(slot, (cx, cy), False) >= 0 for (cx, cy) in cars)
             color = (0, 255, 0) if not occupied else (0, 0, 255)
