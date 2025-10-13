@@ -1,0 +1,32 @@
+# --- Core Python requirements ---
+opencv-python
+opencv-python-headless  # for headless environments (optional)
+numpy
+pandas
+Pillow
+
+# --- YOLOv8 (Ultralytics) ---
+ultralytics
+
+# --- OCR (for license plate text detection) ---
+easyocr
+torch
+torchvision
+torchaudio
+
+# --- Web server for dashboard & streaming ---
+flask
+flask-cors
+requests
+
+# --- Database support (SQLite and Firestore optional) ---
+sqlalchemy
+firebase-admin
+
+# --- Cloudflare tunnel (run externally via binary, not pip) ---
+# note: install cloudflared manually, not via pip
+# https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/
+
+# --- Optional utilities ---
+tqdm
+pyyaml

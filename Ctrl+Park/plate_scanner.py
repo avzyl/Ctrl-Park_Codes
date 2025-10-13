@@ -1,0 +1,179 @@
+import cv2
+import numpy as np
+from ultralytics import YOLO
+import easyocr
+from collections import deque
+from ultralytics.utils import LOGGER
+import time
+import re
+from difflib import SequenceMatcher
+from datetime import datetime
+from flask import Flask, Response
+import threading
+import logging
+import firebase_admin
+from firebase_admin import credentials, firestore
+
+# ------------------------ LOGGING ------------------------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("PlateStream")
+
+# ------------------------ YOLO + OCR SETUP ------------------------
+LOGGER.setLevel("ERROR")
+model = YOLO("weight/best.pt")
+reader = easyocr.Reader(['en'], gpu=True)
+
+# ------------------------ FIREBASE SETUP ------------------------
+cred = credentials.Certificate("serviceAccountKey.json")
+firebase_admin.initialize_app(cred)
+db = firestore.client()
+
+def save_plate_to_firestore(plate_text):
+    """Save detected plate text with timestamp to Firestore"""
+    doc_ref = db.collection("plates").document()  # auto-generated ID
+    doc_ref.set({
+        "plate_number": plate_text,
+        "timestamp": datetime.now().isoformat()
+    })
+    logger.info(f"[SAVED] {plate_text}")
+
+# ------------------------ FLASK SETUP ------------------------
+app = Flask(__name__)
+output_frame = None
+lock = threading.Lock()
+
+@app.route("/scanner")
+def index():
+    return "<h1>Ctrl+Park Live Stream</h1><img src='/video_feed'/>"
+
+@app.route("/scanner/video_feed")
+def video_feed():
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+@app.route("/scanner/health")
+def health():
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
+def generate():
+    global output_frame, lock
+    while True:
+        with lock:
+            if output_frame is None:
+                blank = np.zeros((480, 640, 3), dtype=np.uint8)
+                cv2.putText(blank, "Waiting for webcam...", (50, 240),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                ret, buffer = cv2.imencode('.jpg', blank)
+            else:
+                ret, buffer = cv2.imencode('.jpg', output_frame)
+            frame = buffer.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        time.sleep(0.03)  # ~30 FPS
+
+# ------------------------ DETECTION HELPERS ------------------------
+def normalize_text(text):
+    return re.sub(r'[^A-Z0-9]', '', text.upper())
+
+def is_similar(a, b, threshold=0.9):
+    return SequenceMatcher(None, a, b).ratio() >= threshold
+
+# ------------------------ DETECTION LOOP ------------------------
+def detection_loop():
+    global output_frame, lock
+
+    cap = cv2.VideoCapture(0)
+    while not cap.isOpened():
+        logger.warning("Webcam not accessible. Retrying...")
+        time.sleep(2)
+        cap = cv2.VideoCapture(0)
+
+    box_history = {}
+    smoothing_window = 5
+    plate_stability = {}
+    STABILITY_THRESHOLD = 5
+    last_plate_text = None
+    disappeared_frames = 0
+    PLATE_RESET_FRAMES = 30
+
+    SCAN_ZONE = {"x_min": 100, "y_min": 100, "x_max": 550, "y_max": 400}
+
+    logger.info("Starting detection loop...")
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            logger.error("Failed to read frame from webcam.")
+            continue
+
+        current_plate_text = None
+        results = model(frame, conf=0.5)
+
+        for result in results:
+            for j, box in enumerate(result.boxes.xyxy):
+                x1, y1, x2, y2 = map(int, box)
+
+                # Only inside scan zone
+                if not (SCAN_ZONE["x_min"] <= x1 <= SCAN_ZONE["x_max"] and
+                        SCAN_ZONE["y_min"] <= y1 <= SCAN_ZONE["y_max"] and
+                        SCAN_ZONE["x_min"] <= x2 <= SCAN_ZONE["x_max"] and
+                        SCAN_ZONE["y_min"] <= y2 <= SCAN_ZONE["y_max"]):
+                    continue
+
+                center_id = f"{x1}_{y1}_{x2}_{y2}"
+                if center_id not in box_history:
+                    box_history[center_id] = deque(maxlen=smoothing_window)
+                box_history[center_id].append([x1, y1, x2, y2])
+                x1, y1, x2, y2 = np.mean(box_history[center_id], axis=0).astype(int)
+
+                plate_img = frame[y1:y2, x1:x2]
+                ocr_result = reader.readtext(plate_img, detail=0)
+                if ocr_result:
+                    normalized = normalize_text(''.join(ocr_result).strip())
+                    if normalized:
+                        current_plate_text = normalized
+                        plate_stability[normalized] = plate_stability.get(normalized, 0) + 1
+
+                        if plate_stability[normalized] == STABILITY_THRESHOLD:
+                            if last_plate_text is None or not is_similar(current_plate_text, last_plate_text):
+                                save_plate_to_firestore(current_plate_text)
+                                last_plate_text = current_plate_text
+                                disappeared_frames = 0
+
+                # Draw rectangle for visualization
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                if current_plate_text:
+                    cv2.putText(frame, current_plate_text, (x1, y1 - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+        # Reset if plate disappears
+        if current_plate_text is None and last_plate_text is not None:
+            disappeared_frames += 1
+            if disappeared_frames > PLATE_RESET_FRAMES:
+                last_plate_text = None
+                disappeared_frames = 0
+
+        # Smooth stability counters
+        for plate in list(plate_stability.keys()):
+            if plate != current_plate_text:
+                plate_stability[plate] = max(0, plate_stability[plate] - 1)
+                if plate_stability[plate] == 0:
+                    del plate_stability[plate]
+
+        # Draw scan zone
+        cv2.rectangle(frame,
+                      (SCAN_ZONE["x_min"], SCAN_ZONE["y_min"]),
+                      (SCAN_ZONE["x_max"], SCAN_ZONE["y_max"]),
+                      (255, 255, 0), 2)
+        cv2.putText(frame, "SCAN ZONE",
+                    (SCAN_ZONE["x_min"], SCAN_ZONE["y_min"] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+
+        with lock:
+            output_frame = frame.copy()
+
+    cap.release()
+
+# ------------------------ START EVERYTHING ------------------------
+if __name__ == "__main__":
+    threading.Thread(target=detection_loop, daemon=True).start()
+    app.run(host="0.0.0.0", port=5002, debug=False)
