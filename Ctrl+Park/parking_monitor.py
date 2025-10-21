@@ -1,4 +1,4 @@
-# save as app_server.py
+# with firestore or firebase func
 from flask import Flask, Response, render_template_string, jsonify
 from flask_cors import CORS
 import cv2
@@ -8,18 +8,27 @@ import heapq
 import math
 import threading
 import time
+import firebase_admin
+from firebase_admin import credentials, firestore
 
+# ---------------- Flask Setup ---------------- #
 app = Flask(__name__)
 CORS(app)
 
+# ---------------- Firebase Firestore Setup ---------------- #
+cred = credentials.Certificate("serviceAccountKey.json")
+firebase_admin.initialize_app(cred)
+db = firestore.client()
+last_slot_states = {}  # prevent redundant writes
+
 # ---------------- Config ---------------- #
-VIDEO_PATH = "record_clear.mp4"
+VIDEO_PATH = "video_clips/record_clear.mp4"
 FRAME_WIDTH = 980
 FRAME_HEIGHT = 540
 FPS = 30
 
 # ---------------- Load YOLO model ---------------- #
-model = YOLO("yolov8n.pt")
+model = YOLO("weight/yolov8n.pt")
 
 # ---------------- Parking Slots ---------------- #
 slot_1 = np.array([[56, 76], [102, 69], [59, 76], [96, 72]], np.int32).reshape((-1, 1, 2))
@@ -114,12 +123,6 @@ slots = [slot_mapping[sid] for sid in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
             18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
             34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52]]
 
-def get_slot_center(slot):
-    M = cv2.moments(slot)
-    if M["m00"] != 0:
-        return (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
-    return None
-
 # ---------------- Graph ---------------- #
 nodes_base = {
     "gate": (52, 66),
@@ -188,7 +191,7 @@ def attach_slot_to_nearest_node(slot_center, sname, nodes, edges):
     nearest = min(nodes.keys(), key=lambda n: euclidean(slot_center, nodes[n]))
     nodes[sname] = slot_center
     edges[sname] = []  # slot has no outgoing edges
-    edges[nearest] = [sname]  # stop traversal at slot
+    edges[nearest] = [sname]
     return nearest
 
 def get_turn_directions(path, nodes):
@@ -206,24 +209,26 @@ def get_turn_directions(path, nodes):
             directions.append("Go Straight")
     return directions
 
+def get_slot_center(slot):
+    M = cv2.moments(slot)
+    if M["m00"] != 0:
+        return (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+    return None
+
 # ---------------- Hardcoded Paths ---------------- #
 hardcoded_paths = {
     "slot_32": ["gate", "node1", "node2", "slot_32"],
     "slot_34": ["gate", "node1", "node2", "node3", "node4", "node5", "node6", "node7", "node8", "node9", "slot_34"],
     "slot_35": ["gate", "node1", "node2", "node3", "node4", "node5", "node6", "node7", "node8", "node9", "slot_35"],
-
-    # parking 3
     "slot_52": ["gate", "node1", "node2", "node3", "node4", "node5", "node6", "node7", "node8", "node9", "node10","node11", "node12", "node13", "node14", "node15", "node16", "node17", "node18", "slot_52"],
 }
 
 # ---------------- Slot Priority ---------------- #
-# Define the priority order: farthest from gate first
 slot_priority = [
     52, 51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36,
     35, 34, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19,
     18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
 ]
-
 
 # ---------------- Globals ---------------- #
 latest_directions = []
@@ -263,20 +268,34 @@ def frame_producer():
         available_slots = []
         available_count = 0
 
-        # Iterate through actual slot numbers
-        for slot_number in [
-            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-            21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 38,
-            39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52
-        ]:
-            slot = slot_mapping[slot_number]
+        for slot_number, slot in slot_mapping.items():
             occupied = any(cv2.pointPolygonTest(slot, (cx, cy), False) >= 0 for (cx, cy) in cars)
-            color = (0, 255, 0) if not occupied else (0, 0, 255)
+            slot_status = "Occupied" if occupied else "Available"
+            color = (0, 0, 255) if occupied else (0, 255, 0)
+
+            # ✅ Firestore slot update
+            if last_slot_states.get(slot_number) != slot_status:
+                last_slot_states[slot_number] = slot_status
+                try:
+                    db.collection("slots").document(f"slot_{slot_number}").set({
+                        "slot_number": slot_number,
+                        "location": "Gate 3",
+                        "accuracy": None,
+                        "CCTV_status": slot_status,
+                        "Map_status": "Fetching",
+                        "timestamp": firestore.SERVER_TIMESTAMP
+                    }, merge=True)
+                    print(f"✅ Firestore updated: Slot {slot_number} → CCTV_status = {slot_status}")
+                except Exception as e:
+                    print(f"⚠️ Firestore update error for slot {slot_number}: {e}")
+
+
             if not occupied:
                 cX, cY = get_slot_center(slot)
                 if cX and cY:
                     available_slots.append(((cX, cY), slot_number, slot))
                     available_count += 1
+
             cv2.polylines(overlay, [slot], True, color, 2)
 
         img = cv2.addWeighted(overlay, 0.4, img, 0.6, 0)
@@ -285,73 +304,45 @@ def frame_producer():
         x = (img.shape[1] - tw) // 2
         cv2.putText(img, text, (x, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
 
+        # Pathfinding (unchanged)
         if available_slots:
-            # print(f"DEBUG: Available slots: {[sid for (_, sid, _) in available_slots]}")  # Debug line
-            
-            # Prioritized slot selection: follow slot_priority order
             selected_slot = None
-            
-            # Check available slots in priority order (farthest first)
             for slot_id in slot_priority:
-                slot_available = any(sid == slot_id for (_, sid, _) in available_slots)
-                if slot_available:
+                if any(sid == slot_id for (_, sid, _) in available_slots):
                     selected_slot = slot_id
-                    # print(f"DEBUG: Selected slot {selected_slot}")  # Debug line
                     break
-            
-            # If no priority slots available, use the first available slot
             if not selected_slot:
                 selected_slot = available_slots[0][1]
-                # print(f"DEBUG: Using first available slot {selected_slot}")  # Debug line
-            
-            sname = f"slot_{selected_slot}"
-            # print(f"DEBUG: Slot name: {sname}")  # Debug line
 
-            # Use hardcoded path if available, else shortest path
+            sname = f"slot_{selected_slot}"
             if sname in hardcoded_paths:
                 path = hardcoded_paths[sname]
-                # print(f"DEBUG: Using hardcoded path for {sname}: {path}")  # Debug line
-                # For hardcoded paths, we don't need to modify the graph
                 nodes = dict(nodes_base)
-                # Add the slot center to nodes for drawing
                 slot_center = get_slot_center(slot_mapping[selected_slot])
                 if slot_center:
                     nodes[sname] = slot_center
             else:
-                # print(f"DEBUG: Using graph-based pathfinding for {sname}")  # Debug line
-                # Fallback to graph-based pathfinding
                 nodes = dict(nodes_base)
                 edges = {k: list(v) for k, v in edges_base.items()}
                 for (cxy, sid, _) in available_slots:
                     sname_temp = f"slot_{sid}"
                     attach_slot_to_nearest_node(cxy, sname_temp, nodes, edges)
                 path, _ = shortest_path("gate", sname, nodes, edges)
-                # print(f"DEBUG: Graph path result: {path}")  # Debug line
 
-            # FIX: Check if path is not None before using it
             if path is not None:
-                # Compute directions safely
                 latest_path = path
                 latest_directions = get_turn_directions(latest_path, nodes) if len(path) > 2 else []
-                # print(f"DEBUG: Final path: {latest_path}")  # Debug line
-                # print(f"DEBUG: Directions: {latest_directions}")  # Debug line
-
-                # Draw path
                 for i in range(len(latest_path) - 1):
                     if latest_path[i] in nodes and latest_path[i + 1] in nodes:
                         p1, p2 = nodes[latest_path[i]], nodes[latest_path[i + 1]]
                         cv2.line(img, p1, p2, (0, 255, 255), 3)
             else:
-                # If no path found, clear directions and path
-                # print("DEBUG: No path found!")  # Debug line
                 latest_path = []
                 latest_directions = []
         else:
-            # No available slots
             latest_path = []
             latest_directions = []
 
-        # Encode frame
         ret_enc, buffer = cv2.imencode('.jpg', img)
         if ret_enc:
             with jpeg_lock:
