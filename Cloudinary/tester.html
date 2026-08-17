@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cloudinary Test Uploader</title>
+  <style>
+    body {
+      font-family: "Poppins", sans-serif;
+      background: #f9f9f9;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+
+    .uploader {
+      background: #fff;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      text-align: center;
+      width: 320px;
+    }
+
+    input[type="file"] {
+      margin: 1rem 0;
+    }
+
+    button {
+      background: #2e7bc4;
+      color: white;
+      border: none;
+      padding: 0.7rem 1.5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    button:hover {
+      background: #1f5b90;
+    }
+
+    img {
+      margin-top: 1rem;
+      max-width: 100%;
+      border-radius: 10px;
+    }
+
+    .url-box {
+      margin-top: 1rem;
+      background: #eef4ff;
+      padding: 0.5rem;
+      border-radius: 6px;
+      word-wrap: break-word;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="uploader">
+    <h2>☁️ Cloudinary Uploader Test</h2>
+    <input type="file" id="fileInput" accept="image/*">
+    <button id="uploadBtn">Upload</button>
+    <div id="status"></div>
+    <img id="preview" src="" alt="">
+    <div class="url-box" id="urlBox"></div>
+  </div>
+
+  <script>
+    // ✏️ EDIT THESE TWO LINES:
+    const CLOUD_NAME = "doy8exjvc";
+    const UPLOAD_PRESET = "ctrlpark_uploads";
+
+    const uploadBtn = document.getElementById("uploadBtn");
+    const fileInput = document.getElementById("fileInput");
+    const status = document.getElementById("status");
+    const preview = document.getElementById("preview");
+    const urlBox = document.getElementById("urlBox");
+
+    uploadBtn.addEventListener("click", async () => {
+      const file = fileInput.files[0];
+      if (!file) {
+        alert("Please select an image first!");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", UPLOAD_PRESET);
+
+      status.innerHTML = "⏳ Uploading...";
+      preview.src = "";
+      urlBox.textContent = "";
+
+      try {
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
+          method: "POST",
+          body: formData
+        });
+
+        const data = await res.json();
+        console.log(data);
+
+        if (data.secure_url) {
+          status.innerHTML = "✅ Upload successful!";
+          preview.src = data.secure_url;
+          urlBox.textContent = data.secure_url;
+        } else {
+          status.innerHTML = "❌ Upload failed!";
+          console.error(data);
+        }
+      } catch (err) {
+        status.innerHTML = "❌ Error uploading file.";
+        console.error(err);
+      }
+    });
+  </script>
+
+</body>
+</html>
